@@ -1,9 +1,11 @@
 import semchunk
 from pydantic import BaseModel
 import os
-from openai import OpenAI
 from tqdm import tqdm
 import json
+
+from constants import EMBEDDING_MODEL
+from embedding_utils import get_batched_embeddings
 
 SAVE_DIR = os.path.join(os.path.dirname(__file__), "data", "scraped_documents")
 EMBEDDED_DOCUMENTS_FILE = os.path.join(SAVE_DIR, "embedded_documents.json")
@@ -19,26 +21,12 @@ class Document(BaseModel):
     file_name: str
 
 
-def get_batched_embeddings(
-    texts: list[str],
-    model: str,
-    max_batch_size: int = 500,
-) -> list[list[float]]:
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    texts = [text.replace("\n", " ") for text in texts]
-    embeddings = []
-    for i in range(0, len(texts), max_batch_size):
-        batch = texts[i : i + max_batch_size]
-        batch_embeddings = client.embeddings.create(input=batch, model=model).data
-        embeddings.extend([embedding.embedding for embedding in batch_embeddings])
-    return embeddings
-
 
 def get_chunks(file_text: str) -> list[Chunk]:
     chunk_size = 700
     chunker = semchunk.chunkerify('gpt-4', chunk_size)
     chunk_strs = [x for x in chunker(file_text) if len(x.split(" ")) > 50]
-    embeddings = get_batched_embeddings(chunk_strs, "text-embedding-3-large")
+    embeddings = get_batched_embeddings(chunk_strs, EMBEDDING_MODEL)
     return [Chunk(text=chunk_str, embedding=embedding) for chunk_str, embedding in zip(chunk_strs, embeddings)]
 
 
