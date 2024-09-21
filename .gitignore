@@ -1,0 +1,14 @@
+.env
+.DS_Store
+*.ipynb
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.obj
+__pycache__
+data/
