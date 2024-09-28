@@ -18,10 +18,7 @@ def get_relevant_chunks(query_embedding, documents, top_k=5):
 
 # Define system prompts
 SYSTEM_PROMPTS = {
-    "Default": """You are a helpful AI assistant. Use the provided context to answer the user's question. If the context doesn't contain relevant information, you can draw from your general knowledge. When using information from the context, cite your sources using square brackets with a number, like this: [1]. Use a new number for each unique source.""",
-    "Concise": """You are a concise AI assistant. Provide brief, to-the-point answers based on the given context. If the context is insufficient, use your knowledge but keep responses short. Always cite your sources using square brackets with a number, like this: [1]. Use a new number for each unique source.""",
-    "Expert": """You are an expert AI assistant with deep knowledge in various fields. Provide detailed, nuanced answers using the context provided and your extensive expertise. Explain complex concepts clearly. When referencing information from the context, always include a citation using square brackets with a number, like this: [1]. Use a new number for each unique source.""",
-    "Creative": """You are a creative AI assistant. Use the context as inspiration to provide imaginative and original answers. Think outside the box and offer unique perspectives on the user's questions. When drawing inspiration or information from the context, cite your sources using square brackets with a number, like this: [1]. Use a new number for each unique source.""",
+    "Q&A": """You are a helpful AI assistant answering questions about the work of Warrn McCulloch. Use the provided context to answer the user's question. If the context doesn't contain relevant information, you can draw from your general knowledge. When using information from the context, cite your sources using square brackets with a number, like this: [1]. Use a new number for each unique source.""",
 }
 
 def display_message_with_citations(message, context):
@@ -56,6 +53,31 @@ def display_message_with_citations(message, context):
         """,
         unsafe_allow_html=True
     )
+
+def forage_for_information(prompt, documents, top_k=5):
+    # Generate diverse answers
+    foraging_system_prompt = "You are a creative AI assistant searching for information related to Warrn McCulloch. Generate three diverse, brief answers to the following question. Each answer should be no more than two sentences long."
+    foraging_prompt = f"Question: {prompt}\n\nGenerate three diverse answers:"
+    diverse_answers, _ = get_ai_response(foraging_system_prompt, [foraging_prompt], "haiku", temperature=1.0)
+    
+    # Split the diverse answers
+    answers = diverse_answers.split('\n\n')
+    
+    # Get embeddings for the diverse answers
+    answer_embeddings = get_batched_embeddings(answers, EMBEDDING_MODEL)
+    
+    # Find relevant chunks for each answer
+    all_relevant_chunks = []
+    for embedding in answer_embeddings:
+        chunks = get_relevant_chunks(embedding, documents, top_k/2)  # Slight over-indexing to account for diversity
+        all_relevant_chunks.extend(chunks)
+    
+    # Remove duplicates and sort by relevance
+    unique_chunks = list(set(all_relevant_chunks))
+    unique_chunks.sort(key=lambda x: cosine_similarity(get_batched_embeddings([prompt], EMBEDDING_MODEL)[0], np.array(x.embedding)), reverse=True)
+    
+    # Return the top_k most relevant unique chunks
+    return unique_chunks[:top_k]
 
 def main():
     # Load embedded documents
@@ -104,9 +126,9 @@ def main():
 
     # Chat input
     if prompt := st.chat_input("What would you like to know?"):
-        query_embedding = get_batched_embeddings([prompt], EMBEDDING_MODEL)[0]
-        relevant_chunks = get_relevant_chunks(query_embedding, documents, top_k)
-        context = [chunk.text for chunk in relevant_chunks]
+        with st.spinner("Foraging for information..."):
+            relevant_chunks = forage_for_information(prompt, documents, top_k)
+            context = [chunk.text for chunk in relevant_chunks]
 
         # Prepare human message with context
         human_message = f"Context:\n" + "\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(context)]) + f"\n\nQuestion: {prompt}"
@@ -120,7 +142,7 @@ def main():
 
         conversation_history = [
             msg["content"] if msg["role"] == "assistant" else 
-            f"Context:\n" + "\n".join([f"{i+1}. {chunk}" for i, chunk in enumerate(msg['context'])]) + f"\n\nQuestion: {msg['content']}"
+            f"Context:\n" + "\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(msg['context'])]) + f"\n\nQuestion: {msg['content']}"
             for msg in st.session_state.messages
         ]
 
