@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import semchunk
 from pydantic import BaseModel
 import os
