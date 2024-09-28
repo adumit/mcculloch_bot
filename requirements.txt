@@ -1,6 +1,6 @@
-streamlit
-semchunk
-pydantic
-anthropic
-openai
-tqdm
+streamlit==1.31.1
+semchunk==2.2.0
+pydantic==2.7.1
+anthropic==0.32.0
+openai==1.17.1
+tqdm==4.66.2
