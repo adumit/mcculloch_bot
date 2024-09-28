@@ -3,6 +3,7 @@ from constants import EMBEDDING_MODEL
 from embed_articles import load_documents
 from embedding_utils import get_batched_embeddings
 from get_ai_response import get_ai_response, MODEL
+from field_shift import get_field_shift_prompts
 import numpy as np
 import re
 import html
@@ -18,7 +19,8 @@ def get_relevant_chunks(query_embedding, documents, top_k=5):
 
 # Define system prompts
 SYSTEM_PROMPTS = {
-    "Q&A": """You are a helpful AI assistant answering questions about the work of Warrn McCulloch. Use the provided context to answer the user's question. If the context doesn't contain relevant information, you can draw from your general knowledge. When using information from the context, cite your sources using square brackets with a number, like this: [1]. Use a new number for each unique source.""",
+    "Q&A": """You are a helpful AI assistant answering questions about the work of Warren McCulloch. Use the provided context to answer the user's question. If the context doesn't contain relevant information, you can draw from your general knowledge. When using information from the context, cite your sources using square brackets with a number, like this: [1]. Use a new number for each unique source.""",
+    "Field Shift": "This prompt will be dynamically generated based on the target field."
 }
 
 def display_message_with_citations(message, context):
@@ -56,7 +58,7 @@ def display_message_with_citations(message, context):
 
 def forage_for_information(prompt, documents, top_k=5):
     # Generate diverse answers
-    foraging_system_prompt = "You are a creative AI assistant searching for information related to Warrn McCulloch. Generate three diverse, brief answers to the following question. Each answer should be no more than two sentences long."
+    foraging_system_prompt = "You are a creative AI assistant searching for information related to Warren McCulloch. Generate three diverse, brief answers to the following question. Each answer should be no more than two sentences long."
     foraging_prompt = f"Question: {prompt}\n\nGenerate three diverse answers:"
     diverse_answers, _ = get_ai_response(foraging_system_prompt, [foraging_prompt], "haiku", temperature=1.0)
     
@@ -90,6 +92,12 @@ def main():
     # Sidebar
     st.sidebar.title("Settings")
     selected_prompt_name = st.sidebar.selectbox("Select System Prompt", list(SYSTEM_PROMPTS.keys()))
+    
+    # Add target field input for Field Shift
+    target_field = ""
+    if selected_prompt_name == "Field Shift":
+        target_field = st.sidebar.text_input("Enter target field for Field Shift")
+
     model = st.sidebar.selectbox("Select Model", ["sonnet", "haiku"])
     top_k = st.sidebar.slider("Number of relevant chunks", min_value=1, max_value=20, value=5)
     temperature = st.sidebar.slider("Temperature", min_value=0.0, max_value=2.0, value=1.0, step=0.1)
@@ -98,7 +106,13 @@ def main():
 
     # System prompt editor
     st.subheader("System Prompt")
-    system_prompt = st.text_area("Edit system prompt", value=SYSTEM_PROMPTS[selected_prompt_name], height=100)
+    if selected_prompt_name == "Field Shift" and target_field:
+        system_prompt, human_prompt_template = get_field_shift_prompts("Warren McCulloch's work", target_field, is_mcculloch=True)
+    else:
+        system_prompt = SYSTEM_PROMPTS[selected_prompt_name]
+        human_prompt_template = None
+    
+    system_prompt = st.text_area("Edit system prompt", value=system_prompt, height=200)
 
     # Initialize chat history and total cost
     if "messages" not in st.session_state:
@@ -126,14 +140,19 @@ def main():
 
     # Chat input
     if prompt := st.chat_input("What would you like to know?"):
-        with st.spinner("Foraging for information..."):
-            relevant_chunks = forage_for_information(prompt, documents, top_k)
-            context = [chunk.text for chunk in relevant_chunks]
+        if selected_prompt_name == "Q&A":
+            with st.spinner("Foraging for information..."):
+                relevant_chunks = forage_for_information(prompt, documents, top_k)
+                context = [chunk.text for chunk in relevant_chunks]
+        else:
+            context = []
 
-        # Prepare human message with context
-        human_message = f"Context:\n" + "\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(context)]) + f"\n\nQuestion: {prompt}"
+        if selected_prompt_name == "Field Shift" and target_field:
+            human_message = human_prompt_template.format(prompt=prompt)
+        else:
+            human_message = prompt
 
-        st.session_state.messages.append({"role": "user", "content": prompt, "context": context})
+        st.session_state.messages.append({"role": "user", "content": human_message, "context": context})
         with st.chat_message("user"):
             st.markdown(prompt)
             if show_context:
@@ -142,7 +161,8 @@ def main():
 
         conversation_history = [
             msg["content"] if msg["role"] == "assistant" else 
-            f"Context:\n" + "\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(msg['context'])]) + f"\n\nQuestion: {msg['content']}"
+            (f"Context:\n" + "\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(msg['context'])]) + f"\n\nQuestion: {msg['content']}"
+             if selected_prompt_name != "Field Shift" else msg['content'])
             for msg in st.session_state.messages
         ]
 
