@@ -80,9 +80,9 @@ def forage_for_information(prompt, documents, top_k=5):
     # Remove duplicates and sort by relevance
     unique_texts = list(set([chunk.text for chunk in all_relevant_chunks]))
     unique_chunks = [chunk for chunk in all_relevant_chunks if chunk.text in unique_texts]
-    unique_chunks.sort(key=lambda x: cosine_similarity(get_batched_embeddings([prompt], EMBEDDING_MODEL)[0], np.array(x.embedding)), reverse=True)
+    prompt_embedding = get_batched_embeddings([prompt], EMBEDDING_MODEL)[0]
+    unique_chunks.sort(key=lambda x: cosine_similarity(prompt_embedding, np.array(x.embedding)), reverse=True)
     
-    # Return the top_k most relevant unique chunks
     return unique_chunks[:top_k]
 
 def main():
